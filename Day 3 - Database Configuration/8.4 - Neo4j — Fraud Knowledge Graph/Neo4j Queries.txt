@@ -1,0 +1,58 @@
+// 1. Create unique constraints on Account and Transaction nodes for data integrity and high-speed indexing
+CREATE CONSTRAINT account_id_unique IF NOT EXISTS FOR (a:Account) REQUIRE a.accountId IS UNIQUE;
+CREATE CONSTRAINT txn_id_unique IF NOT EXISTS FOR (t:Transaction) REQUIRE t.txnId IS UNIQUE;
+
+
+// 2. Ingest Account nodes from CSV using MERGE to avoid duplicate customer bubbles
+LOAD CSV WITH HEADERS FROM 'file:///neo4j_accounts_nodes.csv' AS row
+MERGE (a:Account {accountId: row['accountId:ID']})
+SET a.accountType = row.accountType;
+
+
+// 3. Ingest Transaction nodes as first-class graph entities with amount, step, type, and fraud flags
+LOAD CSV WITH HEADERS FROM 'file:///neo4j_transaction_nodes.csv' AS row
+MERGE (t:Transaction {txnId: row['txnId:ID']})
+SET t.step = toInteger(row['step:int']),
+    t.type = row.type,
+    t.amount = toFloat(row['amount:float']),
+    t.isFraud = toInteger(row['isFraud:int']);
+
+
+// 4. Create outbound SENT relationships linking originating Account nodes to Transaction nodes
+LOAD CSV WITH HEADERS FROM 'file:///neo4j_sent_rels.csv' AS row
+MATCH (a:Account {accountId: row[':START_ID']})
+MATCH (t:Transaction {txnId: row[':END_ID']})
+MERGE (a)-[r:SENT]->(t)
+SET r.amount = toFloat(row['amount:float']),
+    r.step = toInteger(row['step:int']),
+    r.transactionType = row.transactionType;
+
+
+// 5. Create inbound RECEIVED_BY relationships linking Transaction nodes to destination Account nodes
+LOAD CSV WITH HEADERS FROM 'file:///neo4j_received_rels.csv' AS row
+MATCH (t:Transaction {txnId: row[':START_ID']})
+MATCH (a:Account {accountId: row[':END_ID']})
+MERGE (t)-[r:RECEIVED_BY]->(a)
+SET r.newbalanceDest = toFloat(row['newbalanceDest:float']),
+    r.isFraud = toInteger(row['isFraud:int']);
+
+
+// 6. Execute Money Mule Detection query identifying destination accounts receiving funds from > 3 distinct senders
+MATCH (sender:Account)-[:SENT]->(t:Transaction)-[:RECEIVED_BY]->(receiver:Account)
+WITH receiver, 
+     count(DISTINCT sender) AS distinct_senders, 
+     count(t) AS total_transactions, 
+     round(sum(t.amount), 2) AS total_inflow
+WHERE distinct_senders > 3
+RETURN receiver.accountId AS mule_account, 
+       receiver.accountType AS account_type,
+       distinct_senders, 
+       total_transactions, 
+       total_inflow
+ORDER BY distinct_senders DESC;
+
+
+// 7. Render visual interactive fraud network path for top money mule account
+MATCH path = (sender:Account)-[:SENT]->(t:Transaction)-[:RECEIVED_BY]->(receiver:Account)
+WHERE receiver.accountId = 'C2812140441'
+RETURN path;

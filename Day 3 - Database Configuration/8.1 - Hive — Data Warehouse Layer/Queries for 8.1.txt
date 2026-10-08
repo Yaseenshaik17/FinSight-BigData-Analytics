@@ -1,0 +1,39 @@
+CREATE DATABASE IF NOT EXISTS finsight;
+
+
+USE finsight;
+
+
+DROP TABLE IF EXISTS finsight.transactions;
+CREATE EXTERNAL TABLE IF NOT EXISTS finsight.transactions (
+    type STRING,
+    amount DOUBLE,
+    nameOrig STRING,
+    oldbalanceOrg DOUBLE,
+    newbalanceOrig DOUBLE,
+    nameDest STRING,
+    oldbalanceDest DOUBLE,
+    newbalanceDest DOUBLE,
+    isFraud INT,
+    isFlaggedFraud INT
+)
+PARTITIONED BY (step INT)
+STORED AS PARQUET
+LOCATION '/finsight/raw/transactions/txn-raw/';
+
+
+MSCK REPAIR TABLE finsight.transactions;
+
+
+DROP VIEW IF EXISTS finsight.vw_fraud_transactions;
+
+CREATE VIEW finsight.vw_fraud_transactions AS
+SELECT step, type, amount, nameOrig, nameDest, isFraud
+FROM finsight.transactions
+WHERE isFraud = 1;
+
+
+ANALYZE TABLE finsight.transactions COMPUTE STATISTICS;
+
+
+SELECT * FROM finsight.vw_fraud_transactions LIMIT 5;

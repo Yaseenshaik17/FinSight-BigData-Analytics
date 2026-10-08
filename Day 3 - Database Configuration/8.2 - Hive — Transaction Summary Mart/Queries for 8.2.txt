@@ -1,0 +1,42 @@
+SET hive.cli.print.header=true;
+
+USE finsight;
+
+-- 1. Create the Managed Summary Mart Table
+DROP TABLE IF EXISTS finsight.txn_summary_mart;
+
+CREATE TABLE IF NOT EXISTS finsight.txn_summary_mart (
+    customerId STRING,
+    step INT,
+    txn_count BIGINT,
+    total_amount DOUBLE,
+    avg_amount DOUBLE,
+    max_amount DOUBLE,
+    fraud_count BIGINT,
+    txn_types STRING,
+    last_balance DOUBLE
+)
+STORED AS PARQUET;
+
+-- 2. Populate the Mart (1 Row per Customer per Step)
+INSERT OVERWRITE TABLE finsight.txn_summary_mart
+SELECT
+    nameOrig AS customerId,
+    step,
+    COUNT(*) AS txn_count,
+    ROUND(SUM(amount), 2) AS total_amount,
+    ROUND(AVG(amount), 2) AS avg_amount,
+    ROUND(MAX(amount), 2) AS max_amount,
+    SUM(CASE WHEN isFraud = 1 OR isFraud = true THEN 1 ELSE 0 END) AS fraud_count,
+    concat_ws(',', collect_set(type)) AS txn_types,
+    MAX(newbalanceOrig) AS last_balance
+FROM finsight.transactions
+GROUP BY nameOrig, step;
+
+-- 3. Requirement R1: Compute Column-Level Table Statistics
+ANALYZE TABLE finsight.txn_summary_mart COMPUTE STATISTICS FOR COLUMNS;
+
+-- 4. Verify Data (Top 5 rows with confirmed fraud)
+SELECT * FROM finsight.txn_summary_mart 
+WHERE fraud_count > 0 
+LIMIT 5;

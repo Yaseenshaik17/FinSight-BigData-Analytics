@@ -1,0 +1,27 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.ipynb_checkpoints/
+
+# Virtual Environments
+venv/
+env/
+.env
+
+# Spark / Hadoop checkpoint local temp
+.checkpoint/
+metastore_db/
+derby.log
+
+# IDE files
+.idea/
+.vscode/
+*.swp
